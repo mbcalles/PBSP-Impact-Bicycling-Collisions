@@ -1,0 +1,239 @@
+---
+title: 'The impact of implementing public bicycle share programs on bicycle crashes:
+  the International Bikeshare Impacts on Cycling and Collisions Study (IBICCS)'
+author: "Michael Calles"
+date: "15/06/2020"
+output: 
+  html_document:
+    theme: journal 
+    code_folding: hide
+    toc: true
+    toc_float: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+
+source("R/Custom_Functions.R")
+load("data/ibiccs_did_collisions.rdata")
+
+#load packages
+
+library(dplyr)
+library(tidyr)
+library(survey)
+library(broom)
+library(ggeffects)
+library(ggplot2)
+
+
+# load custom functions
+
+
+
+# remove respondents with missing covariates
+
+ibiccs <- ibiccs %>%
+  drop_na()
+
+# create svy object
+
+svy <- svydesign(ids = ~1, data = ibiccs, weights = ~post_strat_weights_trunc)
+```
+
+
+# Abstract
+
+A docked public bicycle share program (PBSP) makes bicycles available to the public. There is limited evidence on the impact of PBSPs on safety. We estimated the impacts of implementing a PBSP on bicycle crashes using a difference in differences approach with repeated cross-sectional survey data (self-reported crashes) collected from 8 Canadian and US cities, from 2012-2014. Relative to control cities (Detroit, Philadelphia, Vancouver), we found that the odds of reporting a bicycling crash did not change after implementing a PBSP (New York, Chicago) and were lower for cities that had existing PBSPs (Boston, Montreal, Toronto). 
+
+# Research question and hypothesis
+
+A docked public bicycle share program (PBSP) make bicycles available to the public throughout a service area, and can be a means for increasing bicycling within a population (Fishman, 2016; Hosford et al., 2018, 2019). There is currently limited evidence on the population-level impacts of PBSPs in terms of bicycling crashes and injuries (Fishman, 2016; Fishman & Schepers, 2018). The International Impacts on Cycling and Collisions Study (IBICCS) collected data from over 20,000 participants in 8 major Canadian and US cities from 2012 – 2014 (Fuller et al., 2014). Here, we use the IBICCS data to estimate the impacts of implementing a PBSP on the likelihood of self-reporting a bicycling crash.
+
+# Methods and data
+
+IBICCS is a quasi-experimental non-equivalent groups study designed to evaluate the health and traffic safety impacts of PBSPs. The study protocol is published elsewhere (Fuller et al., 2014). Residents (aged 18+ years) in cities that either had implemented a new PBSP in 2013 (Chicago, New York), had an existing PBSP (Boston, Montreal, Toronto), or had no PBSP during the study period (Detroit, Philadelphia, Vancouver) were sampled. Cities with existing PBSPs included Boston (implemented 2011), Montreal (implemented 2009) and Toronto (implemented 2011) (Hosford et al., 2019). Cross-sectional data was collected in each city in the fall of 2012, 2013, and 2014. Data collected included information on bicycling behaviour, bicycling crashes, sociodemographic characteristics, and residential location. 
+We took a difference in differences approach to evaluate the impact of implementing PBSPs on the likelihood of reporting a bicycling incident (Fuller, Gauvin, Morency, Kestens, & Drouin, 2013). This analysis focuses on changes in self-reported bicycling crashes over time for bicyclists in cities with a newly implemented PBSP, or had an existing PBSP, compared to bicyclists in cities with no PBSP (control cities). We used census data to apply age and gender post-stratification weights to adjust the sample to better represent the general population. Survey weights were truncated at 0.2 and 10 (Hosford et al., 2019).
+We used weighted logistic regression models to ascertain whether the likelihood of reporting a crash changed over time for bicyclists in a newly implemented or existing PBSP city, relative to those in control cities. To quantify the impact of implementing a PBSP on the likelihood of self-reporting a crash we used a model that includes year (2012 [baseline], 2013, 2014), city type (control [No PBSP], newly implemented PBSP, or existing PBSP) and additional covariates. We use an interaction term between year and city type to quantify the effect of PBSPs on the likelihood of a bicyclist self-reporting a crash within newly implemented or existing PBSP city, relative to those in control cities. We selected additional covariates based on bicyclist characteristic and environmental factors that have previously been identified as risk factors for a bicyclist crash (Branion-Calles et al., 2020; Degraeuwe et al., 2015; Fuller et al., 2013; Poulos et al., 2015; Tin Tin, Woodward, & Ameratunga, 2013; Vanparijs, Int Panis, Meeusen, & de Geus, 2015). This included a measure of how much participants bicycle (average weekly bicycling hours in the past 30 days), age (18-24, 25-34, 35-44, 45-54, 55-64, 65+ years), gender (woman, man), educational attainment (high school or less, at least some college or university), perceived safety of bicycling (dangerous, neither safe nor unsafe, safe), and helmet use (never, seldom, often, always). We also used Walk Score® of a participant’s neighbourhood as a proxy for within-city built environment conditions (Walk Score, 2020).
+
+
+# Findings
+
+```{r}
+
+################# TABLE 1 #################
+
+table_1_vars <- names(ibiccs %>% select(crashed,starts_with("crash"),starts_with("most_recent"),-crashed_factor))
+
+table_1 <- lapply(table_1_vars,sum_weights) %>%
+  bind_rows()
+
+total_crashed <- table_1 %>%
+  filter(variable=="crashed") %>%
+  pull(total)
+
+table_1 <- table_1 %>%
+  mutate(`(%)` = total/total_crashed*100) %>%
+  select(-SE)
+
+
+################# TABLE 2 #################
+
+table_2_total <- survey::svytotal(~year_factor,svy) %>%
+  as_tibble(rownames = "year_factor") %>%
+  rename(n=total) %>%
+  mutate(year_factor = factor(stringr::str_remove(year_factor,"year_factor"),
+                              levels = c("2012","2013","2014"))) %>%
+  select(-SE) %>%
+  mutate(`(%)`=n/n*100) %>% 
+  pivot_wider(names_from = year_factor,values_from = c("n","(%)")) %>%
+  mutate(variable = "total",levels="total") %>%
+  select(variable,levels,ends_with("2012"),ends_with("2013"),ends_with("2014"))
+
+
+
+table_2_vars <- names(ibiccs %>%
+                        select(crashed_factor,
+                               city_pbsp,
+                               age_category,
+                               gender,
+                               education_attainment,
+                               helmet_use,
+                               perceived_city_safety))
+
+table_2_cat <- lapply(table_2_vars,sum_cat_var_weights_by_year) %>%
+  bind_rows()
+
+
+
+table_2_vars <- names(ibiccs %>% select(total_weekly_cycling_hours,walk_score))
+
+table_2_num <- lapply(table_2_vars,sum_num_var_weights_by_year) %>%
+  bind_rows() 
+
+################# TABLE 3 #################
+
+
+simple_did <- svyglm(crashed ~ city_pbsp*year_factor + city_pbsp + year_factor  +
+                       total_weekly_cycling_hours , design = svy, family = quasibinomial())
+
+
+table_3a <- tidy(simple_did, conf.int = T, conf.level = 0.95,
+                 exponentiate = T) %>%
+  filter(stringr::str_detect(term,"year|pbsp")) %>%
+  select(term,estimate,conf.low,conf.high) %>%
+  mutate(term = factor(term, levels = c("city_pbspNewly Implemented:year_factor2013",
+                                        "city_pbspExisting:year_factor2013",
+                                        "city_pbspNewly Implemented:year_factor2014",
+                                        "city_pbspExisting:year_factor2014",
+                                        "year_factor2013",
+                                        "year_factor2014",
+                                        "city_pbspNewly Implemented" ,
+                                        "city_pbspExisting"))) %>%
+  arrange(term)
+
+adjusted_did <- svyglm(crashed ~ city_pbsp*year_factor + city_pbsp + year_factor  +
+                         total_weekly_cycling_hours +
+                         age_category +
+                         gender +
+                         education_attainment +
+                         perceived_city_safety +
+                         helmet_use +
+                         walk_score, design = svy, family = quasibinomial())
+
+
+table_3b <- tidy(adjusted_did, conf.int = T, conf.level = 0.95,
+                 exponentiate = T) %>%
+  filter(stringr::str_detect(term,"year|pbsp")) %>%
+  select(term,estimate,conf.low,conf.high) %>%
+  mutate(term = factor(term, levels = c("city_pbspNewly Implemented:year_factor2013",
+                                        "city_pbspExisting:year_factor2013",
+                                        "city_pbspNewly Implemented:year_factor2014",
+                                        "city_pbspExisting:year_factor2014",
+                                        "year_factor2013",
+                                        "year_factor2014",
+                                        "city_pbspNewly Implemented" ,
+                                        "city_pbspExisting"))) %>%
+  arrange(term)
+
+
+
+```
+
+
+
+
+Across cities and survey periods there were `r round(sum(ibiccs$post_strat_weights_trunc))` participants (weighted total) who indicated they bicycled at least once in the previous month and had complete data. Of these, `r round(table_1 %>% filter(variable=="crashed") %>% pull(total))` participants (`r round((table_1 %>% filter(variable=="crashed") %>% pull(total))/sum(ibiccs$post_strat_weights_trunc)*100,1)`%) who reported having experienced at least one crash in the previous 3 months. Just under 40% of these `r round(table_1 %>% filter(variable=="crashed") %>% pull(total))` participants most recent crash resulted in injury and `r round(table_1 %>% filter(variable=="most_recent_crash_emergency_room") %>% pull("(%)"),1)`% involved a visit to the emergency room (Table 1). The number of participants who reported bicycling in the previous month increased from `r table_2_total %>% pull(n_2012) %>% round()` at baseline in 2012 to `r table_2_total %>% pull(n_2014) %>% round()` at two-year follow-up in 2014 (Table 2). There were considerable changes in the perception of bicycling safety with the proportion who view bicycling as dangerous in their city decreasing from `r table_2_cat %>% filter(levels=="Dangerous") %>%  pull("(%)_2012") %>% round(1)`% in 2012 to `r table_2_cat %>% filter(levels=="Dangerous") %>%  pull("(%)_2014") %>% round(1)`% in 2014. 
+
+In our logistic regression models, the interaction term is the estimated difference in the likelihood of a bicycling crash over time in cities that have a newly implemented or existing PBSP, relative to cities without a PBSP (Table 2). After adjustment for bicycling exposure, sociodemographic characteristics, and Walk Score, there was no statistically significant difference in the odds of experiencing a bicycling crash for cities with newly implemented PBSP relative to cities without a PBSP after 1-year (Odds Ratio [OR]: `r table_3b %>% filter(term=="city_pbspNewly Implemented:year_factor2013") %>% pull(estimate) %>% round(2)`; 95% Confidence Interval [CI]:`r table_3b %>% filter(term=="city_pbspNewly Implemented:year_factor2013") %>% pull(conf.low) %>% round(2)`, `r table_3b %>% filter(term=="city_pbspNewly Implemented:year_factor2013") %>% pull(conf.high) %>% round(2)`), and after 2-years (OR: `r table_3b %>% filter(term=="city_pbspNewly Implemented:year_factor2014") %>% pull(estimate) %>% round(2)`; 95% CI:`r table_3b %>% filter(term=="city_pbspNewly Implemented:year_factor2014") %>% pull(conf.low) %>% round(2)`, `r table_3b %>% filter(term=="city_pbspNewly Implemented:year_factor2014") %>% pull(conf.high) %>% round(2)`). For cities with existing PBSPs there was a significant decrease in after 2-year follow-up (OR: `r table_3b %>% filter(term=="city_pbspExisting:year_factor2014") %>% pull(estimate) %>% round(2)`; 95% CI:`r table_3b %>% filter(term=="city_pbspExisting:year_factor2014") %>% pull(conf.low) %>% round(2)`, `r table_3b %>% filter(term=="city_pbspExisting:year_factor2014") %>% pull(conf.high) %>% round(2)`). Figure 1 visualizes the model-based estimates of changes in the predicted probability of a crash from 2012 to 2014 for participants within cities of different PBSP statuses (existing, newly implemented, none). 
+
+In this study of population-level bicycling safety impacts across 8 large cities, we did not find that cities with newly implemented PBSPs had immediate safety impacts. PBSPs may have positive impacts on safety longer time periods, as implied by the decreased odds of a crash in cities that had an existing PBSP at baseline. There are very few studies that evaluate the impact of PBSPs on bicycling safety outcomes, in part due to data challenges. Bicycling crashes are vastly underreported in administrative data (Langley, Dow, Stephenson, & Kypri, 2003; Winters & Branion-Calles, 2017). Although fatalities are consistently recorded they are, fortunately, very rare (Beck, Dellinger, & O’Neil, 2007; Teschke et al., 2013). The IBICCS study provided a large multi-city sample to self-report bicycling crashes, overcoming inconsistencies and data gaps in administrative data, and further, allowed for a quasi-experimental study. Confidence intervals were wide, limiting conclusive evidence on the impacts of implementing PBSPs on bicycling safety. 
+
+```{r}
+
+table_1 %>% 
+  knitr::kable(digits=1,
+               col.names = c("Variable","n","%"),
+               caption = "Table 1. Weighted characteristics of crashes in which a participant fell of their bike in the past 3 months, pooled.")
+
+```
+
+```{r}
+
+bind_rows(table_2_total,table_2_cat) %>% 
+  knitr::kable(digits=1,
+               col.names = c("Variable","Levels","2012 (n)","2012 (%)","2013 (n)","2013 (%)","2014 (n)","2014 (%)"),
+               caption = "Table 2. Weighted characteristics of bicyclists within the IBICCS sample, 2012-2014")
+
+table_2_num %>% knitr::kable(digits=1,
+                             col.names = c("Variable","Mean 2012","SD 2012","Mean 2013","SD 2013","Mean 2014","SD 2014"),
+                             caption="Table 2. Weighted characteristics of bicyclists within the IBICCS sample, 2012-2014")
+
+```
+
+```{r}
+
+left_join(table_3a,table_3b,by="term") %>%
+  mutate(term = c("2013*Newly Implemented","2013*Existing","2014*Newly Implemented","2014*Existing",
+                  "2013","2014","Newly Implemented","Existing")) %>% 
+  knitr::kable(digits=2,
+               col.names = c("Term","Simple OR","Simple LCI","Simple UCI","Adjusted OR","Adjusted LCI","Adjusted UCI"),
+               caption = "Table 3. Weighted difference in differences logistic regression models ")
+
+```
+
+
+```{r,fig.cap="Figure 1. Predicted probability of a crash for participant defined by median of continuous covariates and mode of categorical covariates but differ in City PBSP Status and Year. PBSPs were implemented in 2013 for “Newly Implemented” cities.",fig.height=5,fig.width=7,dpi=500}
+
+
+marginal_effects <- ggpredict(adjusted_did, c("year_factor","city_pbsp"),
+                condition = c(age_category ="25-34",
+                              gender="Men",
+                              education_attainment = "College or University",
+                              perceived_city_safety = "Safe",
+                              helmet_use = "Always"),typical = "median")
+
+
+marginal_effects_plot <- marginal_effects %>% as_tibble() %>%
+  ggplot(aes(x=x,y=predicted,ymax=conf.high,ymin=conf.low,colour=group,group=group)) +
+  geom_point(position=position_dodge(width=0.3),size = 3) +
+  geom_errorbar(width=0.15,position=position_dodge(width=0.3),size = 1) +
+  geom_line(position=position_dodge(width=0.3),linetype = "dashed",size = 1,alpha = 0.75) +
+  scale_y_continuous(labels = scales::percent,
+                     name = "Predicted probability of a crash"
+  ) +
+  xlab("Year") +
+  ggpubr::theme_pubclean() +
+  theme(legend.position = "top") +
+  scale_colour_brewer(palette= "Set2",name="City PBSP Status",
+                      labels = c("None","Newly Implemented","Existing")
+  )
+
+marginal_effects_plot
+
+ggsave(marginal_effects_plot,width = 190,height=142.5, device="svg", units = "mm", path = "Figures/",filename = "Figure 1.svg")
+
+ggsave(marginal_effects_plot,width = 190,height=142.5, device="jpeg", units = "mm",dpi=600, path = "Figures/",filename = "Figure 1.jpg")
+
+```
